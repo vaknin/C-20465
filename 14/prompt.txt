@@ -1,0 +1,22 @@
+CPU Registers:
+8 registers: r0 to r7
+15 bits wide per register
+Least significant bit is bit #0, most significant bit is bit #14
+Registers are prefixed with "r"
+
+Memory:
+4096 words in memory
+15 bits per word
+Memory addresses range from 0 to 4095
+
+Instruction Format:
+Instructions can use 1 to 3 words
+First word format:
+
+Opcode (bits 11-14)
+Source Operand Addressing Mode (bits 7-10)
+Destination Operand Addressing Mode (bits 3-6)
+A, R, E flags (bits 0-2) for Absolute, Relocatable, External addressing
+
+Supported Instructions (opcodes):
+mov (0), cmp (1), add (2), sub (3), lea (4), clr (5), not (6), inc (7), dec (8), jmp (9), bne (10), red (11), prn (12), jsr (13), rts (14), stop (15)
