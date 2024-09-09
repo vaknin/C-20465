@@ -1,9 +1,9 @@
 #ifndef SECOND_PASS_H
 #define SECOND_PASS_H
 
-#include "symbol_table.h"
+#include "assembler.h"
 
-// Function to perform the second pass of the assembler
-int secondPass(const char *filename, SymbolTable *symbolTable);
+int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* memory_image);
+void write_output_files(const char* filename, MemoryImage* memory_image, SymbolTable* symbol_table);
 
 #endif // SECOND_PASS_H

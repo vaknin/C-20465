@@ -1,9 +1,17 @@
 #ifndef FIRST_PASS_H
 #define FIRST_PASS_H
 
-#include "symbol_table.h"
+#include "assembler.h"
+#include <stdio.h>
 
-// Function to perform the first pass of the assembler
-int firstPass(const char *filename, SymbolTable *symbolTable);
+typedef struct {
+    unsigned int opcode : 4;
+    unsigned int src_addressing : 4;
+    unsigned int dst_addressing : 4;
+    unsigned int are : 3;
+} Instruction;
 
-#endif // FIRST_PASS_H
+int first_pass(const char* filename, SymbolTable* symbol_table);
+int get_instruction_length(const char* instruction);
+
+#endif /* FIRST_PASS_H */

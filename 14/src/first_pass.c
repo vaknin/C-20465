@@ -1,108 +1,154 @@
-#include <stdio.h>
-#include <string.h>
 #include "first_pass.h"
-#include "macro_expander.h"
-#include "symbol_table.h"
+#include "assembler.h"
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
 
-#define MAX_LINE_LENGTH 256
+static int DC = 0;
+static int IC = 0;
 
-// Function to perform the first pass of the assembler
-int firstPass(const char *filenamePrefix, SymbolTable *symbolTable) {
-    // Expand macros from .as to .am
-    if (expandMacros(filenamePrefix) != 0) {
-        printf("Error: Failed to expand macros in %s.as\n", filenamePrefix);
-        return -1;
+static char* skip_whitespace(char* str) {
+    while (*str && isspace(*str)) str++;
+    return str;
+}
+
+static char* get_next_token(char** str) {
+    *str = skip_whitespace(*str);
+    if (**str == '\0') return NULL;
+
+    char* start = *str;
+    if (**str == '"') {
+        (*str)++;
+        while (**str && **str != '"') (*str)++;
+        if (**str == '"') (*str)++;
+    } else {
+        while (**str && !isspace(**str) && **str != ',') (*str)++;
     }
+    
+    if (*str != start) {
+        char* token = strndup(start, *str - start);
+        *str = skip_whitespace(*str);
+        if (**str == ',') (*str)++;
+        return token;
+    }
+    return NULL;
+}
 
-    // Generate the .am filename
-    char amFileName[256];
-    strcpy(amFileName, filenamePrefix);
-    strcat(amFileName, ".am");
+static bool is_label(const char* token) {
+    return token[strlen(token) - 1] == ':';
+}
 
-    // Open the .am file for processing
-    FILE *amFile = fopen(amFileName, "r");
-    if (amFile == NULL) {
-        printf("Error: Could not open file %s\n", amFileName);
-        return -1;
+static bool is_data_directive(const char* token) {
+    return strcmp(token, ".data") == 0 || strcmp(token, ".string") == 0;
+}
+
+static bool is_extern_entry_directive(const char* token) {
+    return strcmp(token, ".extern") == 0 || strcmp(token, ".entry") == 0;
+}
+
+static int count_data_words(const char* line) {
+    int count = 0;
+    const char* p = line;
+    while (*p) {
+        if (*p == '"') {  // String
+            p++;
+            while (*p && *p != '"') {
+                count++;
+                p++;
+            }
+            count++; // For null terminator
+        } else if (isdigit(*p) || *p == '-' || *p == '+') {
+            count++;
+            while (isdigit(*p)) p++;
+        }
+        p++;
+    }
+    return count;
+}
+
+int get_instruction_length(const char* instruction) {
+    char* ptr = (char*)instruction;
+    char* opcode = get_next_token(&ptr);
+    char* src = get_next_token(&ptr);
+    char* dst = get_next_token(&ptr);
+    
+    int length = 1;  // First word always present
+    
+    if (src) {
+        if (src[0] == '#' || src[0] == 'r') length++;
+        else length += 2;  // Direct or index addressing
+    }
+    
+    if (dst && strcmp(opcode, "rts") != 0 && strcmp(opcode, "stop") != 0) {
+        if (dst[0] == '#' || dst[0] == 'r') length++;
+        else length += 2;  // Direct or index addressing
+    }
+    
+    free(opcode);
+    free(src);
+    free(dst);
+    
+    return length;
+}
+
+int first_pass(const char* filename, SymbolTable* symbol_table) {
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        printf("Error opening file: %s\n", filename);
+        return 1;
     }
 
     char line[MAX_LINE_LENGTH];
-    int IC = 100;  // Instruction Counter starts at address 100
-    int DC = 0;    // Data Counter starts at 0
-    int lineNumber = 0;
+    char* label = malloc(MAX_LABEL_LENGTH + 1);
 
-    while (fgets(line, sizeof(line), amFile)) {
-        lineNumber++;
-        line[strcspn(line, "\n")] = 0; // Strip newline character
+    while (fgets(line, sizeof(line), file)) {
+        char* ptr = line;
+        char* token = get_next_token(&ptr);
+        if (!token) continue;  // Skip empty lines
 
-        // Skip empty lines and comments
-        if (line[0] == '\0' || line[0] == ';') {
-            continue;
+        bool label_found = false;
+        if (is_label(token)) {
+            strncpy(label, token, MAX_LABEL_LENGTH);
+            label[strlen(label) - 1] = '\0';  // Remove colon
+            label_found = true;
+            free(token);
+            token = get_next_token(&ptr);
         }
 
-        char *token = strtok(line, " \t");
-        char label[31] = "";
+        if (!token) continue;
 
-        // Check if the first field is a label
-        if (strchr(token, ':')) {
-            strncpy(label, token, strlen(token) - 1);  // Copy label without ':'
-            token = strtok(NULL, " \t");
-        }
-
-        // Handle .data or .string directives
-        if (token && (strcmp(token, ".data") == 0 || strcmp(token, ".string") == 0)) {
-            if (label[0] != '\0') {
-                if (addSymbol(symbolTable, label, DC + IC) != 0) {
-                    printf("Error on line %d: Duplicate label '%s'\n", lineNumber, label);
-                    fclose(amFile);
-                    return -1;
-                }
+        if (is_data_directive(token)) {
+            if (label_found) {
+                add_symbol(symbol_table, label, DC, true, false, false, false);
             }
-            // Update DC for .data and .string
-            if (strcmp(token, ".data") == 0) {
-                while ((token = strtok(NULL, ",")) != NULL) {
-                    DC += 1;
+            DC += count_data_words(ptr);
+        } else if (is_extern_entry_directive(token)) {
+            char* symbol_name = get_next_token(&ptr);
+            if (symbol_name) {
+                if (strcmp(token, ".extern") == 0) {
+                    add_symbol(symbol_table, symbol_name, 0, false, false, false, true);
                 }
-            } else if (strcmp(token, ".string") == 0) {
-                token = strtok(NULL, "\"");
-                DC += strlen(token) + 1;  // Add 1 for the null terminator
+                free(symbol_name);
             }
-        }
-        // Handle .extern directive
-        else if (token && strcmp(token, ".extern") == 0) {
-            while ((token = strtok(NULL, " \t,")) != NULL) {
-                if (addSymbol(symbolTable, token, 0) != 0) {
-                    printf("Error on line %d: Duplicate extern label '%s'\n", lineNumber, token);
-                    fclose(amFile);
-                    return -1;
-                }
+        } else {
+            // Instruction
+            if (label_found) {
+                add_symbol(symbol_table, label, IC + 100, false, true, false, false);
             }
+            IC += get_instruction_length(ptr);
         }
-        // Handle .entry directive (entries are resolved in the second pass)
-        else if (token && strcmp(token, ".entry") == 0) {
-            // Entries are noted but not resolved here
-        }
-        // Handle instructions
-        else if (token) {
-            if (label[0] != '\0') {
-                if (addSymbol(symbolTable, label, IC) != 0) {
-                    printf("Error on line %d: Duplicate label '%s'\n", lineNumber, label);
-                    fclose(amFile);
-                    return -1;
-                }
-            }
-            IC += 1;  // Assume 1 word per instruction (adjust if instructions have varying lengths)
+
+        free(token);
+    }
+
+    // Update data symbols
+    for (int i = 0; i < symbol_table->count; i++) {
+        if (symbol_table->symbols[i].is_data) {
+            symbol_table->symbols[i].value += IC + 100;
         }
     }
 
-    // Final adjustment: update addresses of data symbols
-    for (int i = 0; i < symbolTable->count; i++) {
-        if (symbolTable->symbols[i].address >= 100) {  // Skip code labels
-            continue;
-        }
-        symbolTable->symbols[i].address += IC;  // Adjust data symbols' addresses
-    }
-
-    fclose(amFile);
+    free(label);
+    fclose(file);
     return 0;
 }
