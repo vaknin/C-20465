@@ -1,11 +1,11 @@
 CC = gcc
-CFLAGS = -Iinclude
+CFLAGS = -ansi -pedantic -Wall -Iinclude
 
 SRC_DIR = src
 INCLUDE_DIR = include
 
 # List of source files
-SRCS = $(wildcard $(SRC_DIR)/*)
+SRCS = $(wildcard $(SRC_DIR)/*.c)
 
 # Output executable
 TARGET = assembler

@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "symbol_table.h": "c",
-        "preprocessing.h": "c"
+        "preprocessing.h": "c",
+        "assembler.h": "c"
     }
 }

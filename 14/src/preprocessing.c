@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "preprocessing.h"
+#include "helper_functions.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,19 +52,6 @@ char* trim_end(char* str) {
     return str;
 }
 
-char* get_first_token(const char* str) {
-    while (isspace((unsigned char)*str)) str++;
-    const char* end = str;
-    while (*end && !isspace((unsigned char)*end)) end++;
-    return strndup(str, end - str);
-}
-
-char* get_indentation(const char* str) {
-    const char* end = str;
-    while (*end && isspace((unsigned char)*end)) end++;
-    return strndup(str, end - str);
-}
-
 char** tokenize_line(const char* line, int* token_count) {
     char** tokens = NULL;
     *token_count = 0;
@@ -112,7 +100,7 @@ int preprocess_file(const char* filename) {
     FILE* input = fopen(input_filename, "r");
     FILE* output = fopen(output_filename, "w");
     if (!input || !output) {
-        fprintf(stderr, "Error opening files: %s or %s.\n", input_filename, output_filename);
+        report_error(0, "Error opening input or output file");
         free(input_filename);
         free(output_filename);
         free(base_filename);
@@ -127,27 +115,45 @@ int preprocess_file(const char* filename) {
     char** macro_lines = NULL;
     int macro_line_count = 0, macro_lines_capacity = 0;
     int in_macro = 0;
+    int line_number = 0;
 
     while ((read = getline(&line, &len, input)) != -1) {
-        char* trimmed = trim_end(strdup(line));
+        line_number++;
+        char* stripped_line = strip_comments(line);
+        if (stripped_line[0] == '\0') {
+            fprintf(output, "\n");  // Preserve empty lines
+            continue;
+        }
+
+        char* trimmed = trim_end(strdup(stripped_line));
         int token_count;
         char** tokens = tokenize_line(trimmed, &token_count);
 
         if (token_count > 0) {
-            if (strcmp(tokens[0], "macr") == 0 && token_count > 1) {
-                free(macro_name);
-                macro_name = strdup(tokens[1]);
-                in_macro = 1;
-                macro_line_count = 0;
-            } else if (strcmp(tokens[0], "endmacr") == 0) {
-                add_macro(&macro_table, macro_name, macro_lines, macro_line_count);
-                in_macro = 0;
-                for (int i = 0; i < macro_line_count; i++) {
-                    free(macro_lines[i]);
+            if (strcmp(tokens[0], "macr") == 0) {
+                if (token_count != 2) {
+                    report_error(line_number, "Invalid macro definition");
+                } else if (in_macro) {
+                    report_error(line_number, "Nested macro definitions are not allowed");
+                } else {
+                    free(macro_name);
+                    macro_name = strdup(tokens[1]);
+                    in_macro = 1;
+                    macro_line_count = 0;
                 }
-                free(macro_lines);
-                macro_lines = NULL;
-                macro_line_count = macro_lines_capacity = 0;
+            } else if (strcmp(tokens[0], "endmacr") == 0) {
+                if (!in_macro) {
+                    report_error(line_number, "endmacr without corresponding macr");
+                } else {
+                    add_macro(&macro_table, macro_name, macro_lines, macro_line_count);
+                    in_macro = 0;
+                    for (int i = 0; i < macro_line_count; i++) {
+                        free(macro_lines[i]);
+                    }
+                    free(macro_lines);
+                    macro_lines = NULL;
+                    macro_line_count = macro_lines_capacity = 0;
+                }
             } else if (in_macro) {
                 if (macro_line_count == macro_lines_capacity) {
                     macro_lines_capacity = macro_lines_capacity ? macro_lines_capacity * 2 : 1;
@@ -156,7 +162,7 @@ int preprocess_file(const char* filename) {
                 macro_lines[macro_line_count++] = strdup(trim_start(trimmed));
             } else {
                 int expanded = 0;
-                char* base_indent = get_indentation(line);
+                char* base_indent = get_indentation(stripped_line);
                 for (int i = 0; i < token_count; i++) {
                     Macro* macro = find_macro(&macro_table, tokens[i]);
                     if (macro) {
@@ -168,7 +174,7 @@ int preprocess_file(const char* filename) {
                     }
                 }
                 if (!expanded) {
-                    fprintf(output, "%s", line);
+                    fprintf(output, "%s", stripped_line);
                 }
                 free(base_indent);
             }
@@ -181,6 +187,10 @@ int preprocess_file(const char* filename) {
         free(trimmed);
     }
 
+    if (in_macro) {
+        report_error(line_number, "Unterminated macro definition");
+    }
+
     free_macro_table(&macro_table);
     free(macro_name);
     free(line);
@@ -189,5 +199,6 @@ int preprocess_file(const char* filename) {
     free(input_filename);
     free(output_filename);
     free(base_filename);
-    return 0;
+
+    return get_error_count() > 0 ? 1 : 0;
 }
