@@ -42,7 +42,6 @@ char* create_filename(const char* base, const char* extension)
     return filename;
 }
 
-/* process_file: Processes a single assembly file through all stages */
 int process_file(const char* base_filename)
 {
     char* input_filename;
@@ -88,17 +87,23 @@ int process_file(const char* base_filename)
     /* First pass stage */
     printf("Starting first pass...\n");
     symbol_table = create_symbol_table();
-    first_pass(am_filename, &symbol_table);
+    if (first_pass(am_filename, &symbol_table) != 0) {
+        printf("Error: First pass failed for file %s\n", am_filename);
+        result = 1;
+    }
 
-    if (get_error_count() == 0) {
+    if (result == 0) {
         printf("First pass completed successfully.\n");
 
         /* Second pass stage */
         printf("Starting second pass...\n");
         init_memory_image(&memory_image);
-        second_pass(am_filename, &symbol_table, &memory_image);
+        if (second_pass(am_filename, &symbol_table, &memory_image) != 0) {
+            printf("Error: Second pass failed for file %s\n", am_filename);
+            result = 1;
+        }
 
-        if (get_error_count() == 0) {
+        if (result == 0) {
             printf("Second pass completed successfully.\n");
 
             /* Generate output files */
@@ -113,9 +118,10 @@ int process_file(const char* base_filename)
     free_symbol_table(&symbol_table);
 
     /* Check for errors and report */
-    if (get_error_count() > 0) {
+    if (result != 0) {
         printf("Errors were found during processing. No output files generated for %s.\n", base_filename);
-        result = 1;
+        /* Remove the .am file if it exists */
+        remove(am_filename);
     }
 
     printf("Processing completed for file: %s\n\n", base_filename);

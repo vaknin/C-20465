@@ -76,9 +76,13 @@ void free_macro_table(MacroTable* table)
 /* trim_end: Removes trailing whitespace from a string. */
 char* trim_end(char* str)
 {
-    char* end = str + strlen(str) - 1;
+    char* end;
+    
+    if (str == NULL) return NULL;
+    
+    end = str + strlen(str) - 1;
     while (end > str && isspace((unsigned char)*end)) end--;
-    end[1] = '\0';
+    *(end + 1) = '\0';
     return str;
 }
 
@@ -89,6 +93,7 @@ char** tokenize_line(const char* line, int* token_count)
     int capacity = 0;
     const char* start = line;
     const char* end;
+    char* token;
 
     *token_count = 0;
 
@@ -108,7 +113,10 @@ char** tokenize_line(const char* line, int* token_count)
         }
         
         /* Add new token */
-        tokens[(*token_count)++] = (char*)strndup(start, end - start);
+        token = (char*)malloc(end - start + 1);
+        strncpy(token, start, end - start);
+        token[end - start] = '\0';
+        tokens[(*token_count)++] = token;
         start = end;
     }
 
@@ -125,10 +133,10 @@ char* trim_start(char* str)
 /* preprocess_file: Performs macro preprocessing on the input file. */
 int preprocess_file(const char* filename)
 {
-    char *input_filename, *output_filename, *base_filename;
+    char *input_filename = NULL, *output_filename = NULL, *base_filename = NULL;
     const char* extension;
-    FILE *input, *output;
-    MacroTable macro_table;
+    FILE *input = NULL, *output = NULL;
+    MacroTable macro_table = create_macro_table();
     char *line = NULL, *stripped_line, *trimmed, *macro_name = NULL, **macro_lines = NULL, *base_indent;
     size_t len = 0;
     int read;
@@ -138,41 +146,53 @@ int preprocess_file(const char* filename)
     int token_count, i, j, expanded;
     char** tokens;
     Macro* macro;
+    int error_occurred = 0;
 
     /* Determine input and output filenames */
     extension = strrchr(filename, '.');
     
     if (extension && strcmp(extension, ".as") == 0) {
         input_filename = strdup(filename);
-        base_filename = (char*)strndup(filename, extension - filename);
+        base_filename = (char*)malloc(extension - filename + 1);
+        if (base_filename) {
+            strncpy(base_filename, filename, extension - filename);
+            base_filename[extension - filename] = '\0';
+        }
     } else {
         input_filename = (char*)malloc(strlen(filename) + 4);
-        sprintf(input_filename, "%s.as", filename);
+        if (input_filename) {
+            sprintf(input_filename, "%s.as", filename);
+        }
         base_filename = strdup(filename);
     }
     
-    output_filename = (char*)malloc(strlen(base_filename) + 4);
-    sprintf(output_filename, "%s.am", base_filename);
-
-    /* Open input and output files */
-    input = fopen(input_filename, "r");
-    output = fopen(output_filename, "w");
-    if (!input || !output) {
-        report_error(0, "Error opening input or output file");
-        free(input_filename);
-        free(output_filename);
-        free(base_filename);
-        return 1;
+    if (!input_filename || !base_filename) {
+        report_error(0, "Memory allocation failed");
+        error_occurred = 1;
+    } else {
+        output_filename = (char*)malloc(strlen(base_filename) + 4);
+        if (output_filename) {
+            sprintf(output_filename, "%s.am", base_filename);
+        } else {
+            report_error(0, "Memory allocation failed");
+            error_occurred = 1;
+        }
     }
 
-    macro_table = create_macro_table();
+    if (!error_occurred) {
+        /* Open input file */
+        input = fopen(input_filename, "r");
+        if (!input) {
+            report_error(0, "Error opening input file");
+            error_occurred = 1;
+        }
+    }
 
     /* Process input file line by line */
-    while ((read = getline(&line, &len, input)) != -1) {
+    while (!error_occurred && (read = getline(&line, &len, input)) != -1) {
         line_number++;
         stripped_line = strip_comments(line);
         if (stripped_line[0] == '\0') {
-            fprintf(output, "\n");  /* Preserve empty lines */
             continue;
         }
 
@@ -184,8 +204,10 @@ int preprocess_file(const char* filename)
                 /* Start of macro definition */
                 if (token_count != 2) {
                     report_error(line_number, "Invalid macro definition");
+                    error_occurred = 1;
                 } else if (in_macro) {
                     report_error(line_number, "Nested macro definitions are not allowed");
+                    error_occurred = 1;
                 } else {
                     free(macro_name);
                     macro_name = strdup(tokens[1]);
@@ -196,6 +218,7 @@ int preprocess_file(const char* filename)
                 /* End of macro definition */
                 if (!in_macro) {
                     report_error(line_number, "endmacr without corresponding macr");
+                    error_occurred = 1;
                 } else {
                     add_macro(&macro_table, macro_name, macro_lines, macro_line_count);
                     in_macro = 0;
@@ -215,24 +238,34 @@ int preprocess_file(const char* filename)
                 macro_lines[macro_line_count++] = strdup(trim_start(trimmed));
             } else {
                 /* Normal line or macro expansion */
-                expanded = 0;
-                base_indent = get_indentation(stripped_line);
-                for (i = 0; i < token_count; i++) {
-                    macro = find_macro(&macro_table, tokens[i]);
-                    if (macro) {
-                        /* Expand macro */
-                        for (j = 0; j < macro->line_count; j++) {
-                            fprintf(output, "%s%s\n", base_indent, macro->lines[j]);
-                        }
-                        expanded = 1;
-                        break;
+                if (!output) {
+                    output = fopen(output_filename, "w");
+                    if (!output) {
+                        report_error(0, "Error opening output file");
+                        error_occurred = 1;
                     }
                 }
-                if (!expanded) {
-                    /* Write original line if not a macro */
-                    fprintf(output, "%s", stripped_line);
+
+                if (!error_occurred) {
+                    expanded = 0;
+                    base_indent = get_indentation(stripped_line);
+                    for (i = 0; i < token_count; i++) {
+                        macro = find_macro(&macro_table, tokens[i]);
+                        if (macro) {
+                            /* Expand macro */
+                            for (j = 0; j < macro->line_count; j++) {
+                                fprintf(output, "%s%s\n", base_indent, macro->lines[j]);
+                            }
+                            expanded = 1;
+                            break;
+                        }
+                    }
+                    if (!expanded) {
+                        /* Write original line if not a macro */
+                        fprintf(output, "%s", stripped_line);
+                    }
+                    free(base_indent);
                 }
-                free(base_indent);
             }
         }
 
@@ -247,17 +280,24 @@ int preprocess_file(const char* filename)
     /* Check for unterminated macro */
     if (in_macro) {
         report_error(line_number, "Unterminated macro definition");
+        error_occurred = 1;
     }
 
     /* Final cleanup */
     free_macro_table(&macro_table);
     free(macro_name);
     free(line);
-    fclose(input);
-    fclose(output);
+    if (input) fclose(input);
+    if (output) fclose(output);
+
+    if (error_occurred && output_filename) {
+        /* Remove the .am file if errors occurred */
+        remove(output_filename);
+    }
+
     free(input_filename);
     free(output_filename);
     free(base_filename);
 
-    return get_error_count() > 0 ? 1 : 0;
+    return error_occurred ? 1 : 0;
 }
