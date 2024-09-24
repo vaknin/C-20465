@@ -1,3 +1,9 @@
+/***************************************************************
+ * File: main.c
+ * Description: Main entry point for the assembler program.
+ ***************************************************************/
+
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,24 +13,50 @@
 #include "second_pass.h"
 #include "helper_functions.h"
 
-char* create_filename(const char* base, const char* extension) {
-    size_t len = strlen(base) + (extension ? strlen(extension) : 0) + 1;
-    char* filename = malloc(len);
+/* Function prototypes */
+char* create_filename(const char* base, const char* extension);
+int process_file(const char* base_filename);
+
+/* create_filename: Creates a new filename by appending an extension */
+char* create_filename(const char* base, const char* extension)
+{
+    char* filename;
+    size_t len;
+
+    /* Calculate required length for the new filename */
+    len = strlen(base) + (extension ? strlen(extension) : 0) + 1;
+    
+    /* Allocate memory for the new filename */
+    filename = malloc(len);
     if (!filename) {
         perror("Memory allocation failed");
         exit(1);
     }
+    
+    /* Construct the new filename */
     strcpy(filename, base);
     if (extension) {
         strcat(filename, extension);
     }
+    
     return filename;
 }
 
-int process_file(const char* base_filename) {
-    char* input_filename = create_filename(base_filename, ".as");
-    FILE* test_file = fopen(input_filename, "r");
+/* process_file: Processes a single assembly file through all stages */
+int process_file(const char* base_filename)
+{
+    char* input_filename;
+    char* am_filename;
+    FILE* test_file;
+    SymbolTable symbol_table;
+    MemoryImage memory_image;
+    int result = 0;
+
+    /* Attempt to open the input file with .as extension */
+    input_filename = create_filename(base_filename, ".as");
+    test_file = fopen(input_filename, "r");
     if (!test_file) {
+        /* If failed, try opening without extension */
         free(input_filename);
         input_filename = strdup(base_filename);
         test_file = fopen(input_filename, "r");
@@ -36,12 +68,14 @@ int process_file(const char* base_filename) {
     }
     fclose(test_file);
 
-    char* am_filename = create_filename(base_filename, ".am");
+    /* Create filename for the preprocessed file */
+    am_filename = create_filename(base_filename, ".am");
 
     printf("Processing file: %s\n", input_filename);
 
-    reset_error_count();  // Reset error count for this file
+    reset_error_count();  /* Reset error count for this file */
 
+    /* Preprocessing stage */
     printf("Starting preprocessing...\n");
     if (preprocess_file(input_filename) != 0) {
         printf("Error: Preprocessing failed for file %s\n", input_filename);
@@ -51,21 +85,23 @@ int process_file(const char* base_filename) {
     }
     printf("Preprocessing completed.\n");
 
+    /* First pass stage */
     printf("Starting first pass...\n");
-    SymbolTable symbol_table = create_symbol_table();
+    symbol_table = create_symbol_table();
     first_pass(am_filename, &symbol_table);
 
     if (get_error_count() == 0) {
         printf("First pass completed successfully.\n");
 
+        /* Second pass stage */
         printf("Starting second pass...\n");
-        MemoryImage memory_image;
         init_memory_image(&memory_image);
         second_pass(am_filename, &symbol_table, &memory_image);
 
         if (get_error_count() == 0) {
             printf("Second pass completed successfully.\n");
 
+            /* Generate output files */
             printf("Generating output files...\n");
             write_output_files(base_filename, &memory_image, &symbol_table);
             printf("Output files generated.\n");
@@ -76,30 +112,39 @@ int process_file(const char* base_filename) {
 
     free_symbol_table(&symbol_table);
 
+    /* Check for errors and report */
     if (get_error_count() > 0) {
         printf("Errors were found during processing. No output files generated for %s.\n", base_filename);
+        result = 1;
     }
 
     printf("Processing completed for file: %s\n\n", base_filename);
 
+    /* Clean up */
     free(input_filename);
     free(am_filename);
 
-    return get_error_count() > 0 ? 1 : 0;
+    return result;
 }
 
-int main(int argc, char *argv[]) {
+/* main: Entry point of the assembler program */
+int main(int argc, char *argv[])
+{
+    int i;
+    int total_files = 0;
+    int files_with_errors = 0;
+    int result;
+
+    /* Check for correct usage */
     if (argc < 2) {
         printf("Usage: %s <filename1> [filename2 ...]\n", argv[0]);
         return 1;
     }
 
-    int total_files = 0;
-    int files_with_errors = 0;
-
-    for (int i = 1; i < argc; i++) {
+    /* Process each input file */
+    for (i = 1; i < argc; i++) {
         printf("Processing file %d of %d: %s\n", i, argc - 1, argv[i]);
-        int result = process_file(argv[i]);
+        result = process_file(argv[i]);
         total_files++;
         if (result != 0) {
             files_with_errors++;
@@ -107,6 +152,7 @@ int main(int argc, char *argv[]) {
         printf("\n");
     }
 
+    /* Print summary */
     printf("Assembly process completed.\n");
     printf("Total files processed: %d\n", total_files);
     printf("Files assembled successfully: %d\n", total_files - files_with_errors);
