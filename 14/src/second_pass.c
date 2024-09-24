@@ -49,7 +49,7 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
                 char* num;
                 while ((num = get_next_token(&ptr)) != NULL) {
                     int value = atoi(num);
-                    add_to_memory_image(memory_image, twos_complement(value), ARE_ABSOLUTE, true);
+                    add_to_memory_image(memory_image, (unsigned short)value, ARE_ABSOLUTE, 1);
                     free(num);
                 }
             } else if (strcmp(token, ".string") == 0) {
@@ -57,9 +57,9 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
                 if (str && str[0] == '"') {
                     int i;
                     for (i = 1; str[i] != '"' && str[i] != '\0'; i++) {
-                        add_to_memory_image(memory_image, str[i], ARE_ABSOLUTE, true);
+                        add_to_memory_image(memory_image, (unsigned short)str[i], ARE_ABSOLUTE, 1);
                     }
-                    add_to_memory_image(memory_image, 0, ARE_ABSOLUTE, true);  /* Null terminator */
+                    add_to_memory_image(memory_image, 0, ARE_ABSOLUTE, 1);  /* Null terminator */
                 } else {
                     report_error(line_number, "Invalid string directive");
                 }
@@ -88,20 +88,21 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
             dst_mode = dst ? encode_addressing_mode(dst) : 0;
 
             encoded = encode_instruction(opcode, src_mode, dst_mode);
-            add_to_memory_image(memory_image, encoded, ARE_ABSOLUTE, false);
+            add_to_memory_image(memory_image, encoded, ARE_ABSOLUTE, 0);
             IC++;
 
             /* Handle source operand */
             if (src) {
                 AREType are;
                 unsigned short src_encoded = encode_operand(src, symbol_table, &are);
-                add_to_memory_image(memory_image, src_encoded, are, false);
+                add_to_memory_image(memory_image, src_encoded, are, 0);
                 IC++;
 
                 if (src_mode == DIRECT && src[0] != '*') {
                     Symbol* symbol = find_symbol(symbol_table, src);
                     if (symbol) {
-                        add_to_memory_image(memory_image, symbol->value, symbol->is_external ? ARE_EXTERNAL : ARE_RELOCATABLE, false);
+                        add_to_memory_image(memory_image, (unsigned short)symbol->value, 
+                                            symbol->is_external ? ARE_EXTERNAL : ARE_RELOCATABLE, 0);
                         if (symbol->is_external) {
                             add_external_reference(memory_image, symbol->name, IC);
                         }
@@ -116,13 +117,14 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
             if (dst) {
                 AREType are;
                 unsigned short dst_encoded = encode_operand(dst, symbol_table, &are);
-                add_to_memory_image(memory_image, dst_encoded, are, false);
+                add_to_memory_image(memory_image, dst_encoded, are, 0);
                 IC++;
 
                 if (dst_mode == DIRECT && dst[0] != '*') {
                     Symbol* symbol = find_symbol(symbol_table, dst);
                     if (symbol) {
-                        add_to_memory_image(memory_image, symbol->value, symbol->is_external ? ARE_EXTERNAL : ARE_RELOCATABLE, false);
+                        add_to_memory_image(memory_image, (unsigned short)symbol->value, 
+                                            symbol->is_external ? ARE_EXTERNAL : ARE_RELOCATABLE, 0);
                         if (symbol->is_external) {
                             add_external_reference(memory_image, symbol->name, IC);
                         }
@@ -156,9 +158,25 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
 
 /* write_output_files: Generates .ob, .ent, and .ext output files */
 void write_output_files(const char* filename, MemoryImage* memory_image, SymbolTable* symbol_table) {
-    char ob_filename[256], ent_filename[256], ext_filename[256];
+    char *ob_filename, *ent_filename, *ext_filename;
     FILE *ob_file, *ent_file, *ext_file;
-    int i;
+    int i, j;
+    size_t filename_len;
+
+    filename_len = strlen(filename);
+
+    /* Allocate memory for filenames */
+    ob_filename = (char*)malloc(filename_len + 4); /* +4 for ".ob\0" */
+    ent_filename = (char*)malloc(filename_len + 5); /* +5 for ".ent\0" */
+    ext_filename = (char*)malloc(filename_len + 5); /* +5 for ".ext\0" */
+
+    if (!ob_filename || !ent_filename || !ext_filename) {
+        report_error(0, "Memory allocation failed for filenames");
+        free(ob_filename);
+        free(ent_filename);
+        free(ext_filename);
+        return;
+    }
 
     sprintf(ob_filename, "%s.ob", filename);
     sprintf(ent_filename, "%s.ent", filename);
@@ -200,11 +218,29 @@ void write_output_files(const char* filename, MemoryImage* memory_image, SymbolT
     /* Write .ext file */
     ext_file = fopen(ext_filename, "w");
     if (ext_file) {
-        for (i = 0; i < memory_image->external_count; i++) {
-            fprintf(ext_file, "%s %04d\n", memory_image->externals[i].symbol_name, memory_image->externals[i].address);
+        for (i = 0; i < symbol_table->count; i++) {
+            if (symbol_table->symbols[i].is_external) {
+                int found = 0;
+                /* Check if the external symbol is used and write its addresses */
+                for (j = 0; j < memory_image->external_count; j++) {
+                    if (strcmp(symbol_table->symbols[i].name, memory_image->externals[j].symbol_name) == 0) {
+                        fprintf(ext_file, "%s %04d\n", memory_image->externals[j].symbol_name, memory_image->externals[j].address);
+                        found = 1;
+                    }
+                }
+                /* If the external symbol is not used, write it with a special address */
+                if (!found) {
+                    fprintf(ext_file, "%s %04d\n", symbol_table->symbols[i].name, 0);  /* Use 0000 to indicate unused */
+                }
+            }
         }
         fclose(ext_file);
     } else {
         report_error(0, "Error opening .ext file for writing");
     }
+
+    /* Free allocated memory */
+    free(ob_filename);
+    free(ent_filename);
+    free(ext_filename);
 }

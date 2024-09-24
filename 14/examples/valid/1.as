@@ -1,0 +1,14 @@
+.entry LOOP
+.extern L3
+MAIN: add r3, LIST
+LOOP: prn #48
+      mov r3, K
+      sub r1, r4
+      cmp r3, #-6
+      bne END
+      dec K
+      jmp LOOP
+END:  stop
+LIST: .data 6, -9, 15
+STR:  .string "abcdef"
+K:    .data 22

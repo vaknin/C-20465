@@ -44,10 +44,10 @@ typedef enum {
 typedef struct {
     char* name;
     int value;
-    bool is_data;
-    bool is_code;
-    bool is_entry;
-    bool is_external;
+    int is_data;
+    int is_code;
+    int is_entry;
+    int is_external;
 } Symbol;
 
 /* SymbolTable: Structure representing the symbol table */
@@ -85,7 +85,7 @@ SymbolTable create_symbol_table(void);
 void free_symbol_table(SymbolTable* table);
 
 /* add_symbol: Adds a new symbol to the symbol table or updates an existing one. */
-void add_symbol(SymbolTable* table, const char* name, int value, bool is_data, bool is_code, bool is_entry, bool is_external);
+void add_symbol(SymbolTable* table, const char* name, int value, int is_data, int is_code, int is_entry, int is_external);
 
 /* find_symbol: Searches for a symbol in the symbol table and returns a pointer to it if found, or NULL if not found. */
 Symbol* find_symbol(SymbolTable* table, const char* name);
@@ -99,7 +99,7 @@ void init_memory_image(MemoryImage* image);
 void free_memory_image(MemoryImage* image);
 
 /* add_to_memory_image: Adds a new word to the memory image (either code or data section). */
-void add_to_memory_image(MemoryImage* image, unsigned short value, AREType are, bool is_data);
+void add_to_memory_image(MemoryImage* image, unsigned short value, AREType are, int is_data);
 
 /* add_external_reference: Adds a new external reference to the memory image. */
 void add_external_reference(MemoryImage* memory_image, const char* symbol_name, int address);
