@@ -20,6 +20,7 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
     int line_number = 0;
     int IC = 100;  /* Starting address for code segment */
     int i;
+    int error_occurred = 0;
 
     file = fopen(filename, "r");
     if (!file) {
@@ -62,6 +63,7 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
                     add_to_memory_image(memory_image, 0, ARE_ABSOLUTE, 1);  /* Null terminator */
                 } else {
                     report_error(line_number, "Invalid string directive");
+                    error_occurred = 1;
                 }
                 free(str);
             }
@@ -77,6 +79,7 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
 
             if (opcode == -1) {
                 report_error(line_number, "Invalid instruction");
+                error_occurred = 1;
                 free(token);
                 continue;
             }
@@ -108,6 +111,7 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
                         }
                     } else {
                         report_error(line_number, "Symbol not found");
+                        error_occurred = 1;
                     }
                     IC++;
                 }
@@ -130,6 +134,7 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
                         }
                     } else {
                         report_error(line_number, "Symbol not found");
+                        error_occurred = 1;
                     }
                     IC++;
                 }
@@ -148,12 +153,13 @@ int second_pass(const char* filename, SymbolTable* symbol_table, MemoryImage* me
             (symbol_table->symbols[i].is_code || symbol_table->symbols[i].is_data) && 
             symbol_table->symbols[i].value == 0) {
             report_error(0, "Undefined symbol");
+            error_occurred = 1;
         }
     }
 
     free(line);
     fclose(file);
-    return get_error_count() > 0 ? 1 : 0;
+    return error_occurred;
 }
 
 /* write_output_files: Generates .ob, .ent, and .ext output files */

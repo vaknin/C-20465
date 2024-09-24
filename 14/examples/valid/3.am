@@ -1,0 +1,13 @@
+.extern print
+START: lea STR, r1
+jsr print
+mov #-1, r2
+inc r2
+bne CONT
+stop
+CONT:  not r2
+clr r3
+sub r2, r3
+jmp START
+STR:   .string "Hello, World!"
+.entry START

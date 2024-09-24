@@ -1,0 +1,15 @@
+Error at line 13: Invalid label
+Processing file 1 of 1: 2
+Processing file: 2.as
+Starting preprocessing...
+Preprocessing completed.
+Starting first pass...
+Error: First pass failed for file 2.am
+Errors were found during processing. No output files generated for 2.
+Processing completed for file: 2
+
+
+Assembly process completed.
+Total files processed: 1
+Files assembled successfully: 0
+Files with errors: 1

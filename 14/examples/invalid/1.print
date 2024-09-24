@@ -1,0 +1,15 @@
+Error at line 11: Invalid instruction
+Processing file 1 of 1: 1
+Processing file: 1.as
+Starting preprocessing...
+Preprocessing completed.
+Starting first pass...
+Error: First pass failed for file 1.am
+Errors were found during processing. No output files generated for 1.
+Processing completed for file: 1
+
+
+Assembly process completed.
+Total files processed: 1
+Files assembled successfully: 0
+Files with errors: 1

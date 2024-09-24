@@ -107,7 +107,6 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
     char* symbol_name;
     int instruction_length;
     int i;
-    int error_in_file = 0;
 
     file = fopen(filename, "r");
     if (!file) {
@@ -128,10 +127,10 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
 
         label = NULL;
         if (is_label(token)) {
-            label = strndup(token, strlen(token) - 1);  /* Remove colon */
+            label = strdup(token);
+            label[strlen(label) - 1] = '\0';  /* Remove colon */
             if (!is_valid_label(label)) {
                 report_error(line_number, "Invalid label");
-                error_in_file = 1;
                 free(label);
                 free(token);
                 continue;
@@ -150,7 +149,6 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
                 existing = find_symbol(symbol_table, label);
                 if (existing && (existing->is_data || existing->is_code)) {
                     report_error(line_number, "Duplicate symbol definition");
-                    error_in_file = 1;
                 } else {
                     add_symbol(symbol_table, label, DC, true, false, false, false);
                 }
@@ -158,7 +156,6 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
             data_words = count_data_words(ptr);
             if (data_words == 0) {
                 report_error(line_number, "Invalid data directive");
-                error_in_file = 1;
             }
             DC += data_words;
         } else if (is_extern_entry_directive(token)) {
@@ -168,7 +165,6 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
                     existing = find_symbol(symbol_table, symbol_name);
                     if (existing && !existing->is_external) {
                         report_error(line_number, "Symbol already defined locally");
-                        error_in_file = 1;
                     } else {
                         add_symbol(symbol_table, symbol_name, 0, false, false, false, true);
                     }
@@ -183,7 +179,6 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
                 free(symbol_name);
             } else {
                 report_error(line_number, "Missing symbol name for extern/entry directive");
-                error_in_file = 1;
             }
         } else {
             /* Instruction */
@@ -191,7 +186,6 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
                 existing = find_symbol(symbol_table, label);
                 if (existing && (existing->is_data || existing->is_code)) {
                     report_error(line_number, "Duplicate symbol definition");
-                    error_in_file = 1;
                 } else {
                     add_symbol(symbol_table, label, IC, false, true, false, false);
                 }
@@ -203,7 +197,6 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
                 IC += instruction_length;
             } else {
                 report_error(line_number, "Invalid instruction");
-                error_in_file = 1;
             }
         }
 
@@ -220,5 +213,5 @@ int first_pass(const char* filename, SymbolTable* symbol_table)
 
     free(line);
     fclose(file);
-    return error_in_file;
+    return get_error_count() > 0 ? 1 : 0;
 }

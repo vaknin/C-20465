@@ -15,7 +15,7 @@ static int error_count = 0; /* Keeps track of the number of errors encountered *
 /* report_error: Reports an error with the given line number and message. */
 void report_error(int line_number, const char* message)
 {
-    fprintf(stdout, "Error at line %d: %s\n", line_number, message);
+    fprintf(stderr, "Error at line %d: %s\n", line_number, message);
     error_count++; /* Increment the error count */
 }
 
@@ -126,7 +126,7 @@ char* get_next_token(char** str)
     
     if (*str != start) {
         /* Allocate and copy the token */
-        token = malloc((*str - start + 1) * sizeof(char));
+        token = (char*)malloc((*str - start + 1) * sizeof(char));
         if (token == NULL) {
             fprintf(stderr, "Memory allocation failed in get_next_token\n");
             exit(1);
@@ -281,7 +281,7 @@ char* get_first_token(const char* str)
     while (*end && !isspace((unsigned char)*end)) end++;
 
     /* Allocate and copy the token */
-    token = malloc((end - start + 1) * sizeof(char));
+    token = (char*)malloc((end - start + 1) * sizeof(char));
     if (token == NULL) {
         fprintf(stderr, "Memory allocation failed in get_first_token\n");
         exit(1);
@@ -302,7 +302,7 @@ char* get_indentation(const char* str)
     while (*end && isspace((unsigned char)*end)) end++;
 
     /* Allocate and copy the indentation */
-    indentation = malloc((end - str + 1) * sizeof(char));
+    indentation = (char*)malloc((end - str + 1) * sizeof(char));
     if (indentation == NULL) {
         fprintf(stderr, "Memory allocation failed in get_indentation\n");
         exit(1);
